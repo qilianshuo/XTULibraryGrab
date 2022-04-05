@@ -214,4 +214,5 @@ class LibraryAPI(threading.Thread):
         :return: None
         """
         self.grab(self.lib_id, self.seat_coordinate)
+        log_print("Test Flag")
         self.signin()
