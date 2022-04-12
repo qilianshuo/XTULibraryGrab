@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 import re
+import time
 import threading
 import requests
 
@@ -183,11 +184,14 @@ class LibraryAPI(threading.Thread):
         Signin to access five point
         :return: Status of signin
         """
+        self.login()
         html = self.session.get('https://wechat.v2.traceint.com/index.php/usertask/index.html').text
         try:
+            log_print(html)
             task_id = re.findall(r'/index.php/usertask/detail/id=(\d+).html', html)[0]
         except IndexError:
             return False
+        log_print("DoSignin Flag")
         result = self.session.post(
             'https://wechat.v2.traceint.com/index.php/usertask/ajaxdone.html',
             data={'id': task_id}).json()
@@ -214,5 +218,5 @@ class LibraryAPI(threading.Thread):
         :return: None
         """
         self.grab(self.lib_id, self.seat_coordinate)
-        log_print("Test Flag")
+        time.sleep(60)
         self.signin()
