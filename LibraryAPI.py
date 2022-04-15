@@ -5,7 +5,7 @@ import time
 import threading
 import requests
 
-from utils import log_print, get_seat_key
+from utils import log_print, get_seat_key, block
 
 
 class LibraryAPI(threading.Thread):
@@ -20,7 +20,7 @@ class LibraryAPI(threading.Thread):
         'seat_list_url': 'https://wechat.v2.traceint.com/index.php/reserve/mylist.html'
     }
 
-    def __init__(self, login_link, lib_id, seat_coordinate):
+    def __init__(self, login_link, lib_id, seat_coordinate, start_time=None):
         self.session = requests.session()
         self.session.headers = {
             'Host': 'wechat.v2.traceint.com',
@@ -37,17 +37,24 @@ class LibraryAPI(threading.Thread):
         self.login_link = login_link
         self.lib_id = lib_id
         self.seat_coordinate = seat_coordinate
+
+        self.start_time = start_time
         super().__init__()
 
     def login(self) -> str:
+        """
+        Access the login_link to get user session
+        :return: Index Page Html
+        """
         resp = self.session.get(self.login_link)
         resp.encoding = resp.apparent_encoding
         if 'https://wechat.v2.traceint.com/index.php' in resp.url:
             log_print('Successful login.')
             return resp.text
         else:
-            log_print('Login failed.')
-            raise SystemError
+            log_print('The response url: ' + resp.url)
+            log_print('The response text: ' + resp.text)
+            raise SystemError("Login failed!")
 
     def check_status(self) -> int:
         """
@@ -62,10 +69,10 @@ class LibraryAPI(threading.Thread):
         else:
             return 0
 
-    def find_room(self) -> dict:
+    def get_room_list(self) -> list:
         """
-        Find room which has free seats
-        :return: {room_name: room_url}
+        Get the room_list
+        :return: [(NAME, URL, STATE),]
         """
         resp = self.session.get(self.api['INDEX_URL'])
         resp.encoding = resp.apparent_encoding
@@ -73,18 +80,27 @@ class LibraryAPI(threading.Thread):
         list_group = re.findall(r'<div class="list-group".*?>([\s\S]*?)</div>', resp.text)
         if list_group is None:
             log_print('Failed to match room list')
-            return {}
+            return []
         # room_list: [(room_url, room_name, room_status),]
         room_list = re.findall(
             r'<a href=".*?" data-url="(.*?)".*?><.*?>(.*?)<.*?>(.*?)<.*?>',
             list_group[0].replace('\t', '').replace('\n', ''))
+
+        return [(room[1].strip(), self.api['HOST'] + room[0], room[2]) for room in room_list]
+
+    def find_vacant_room(self) -> dict:
+        """
+        Find room which has free seats
+        :return: {room_name: room_url,}
+        """
+        room_list = self.get_room_list()
 
         vacant_room = {}
         for room in room_list:
             if room[2] == 'close':
                 continue
             if int(room[2].split('/')[0]):
-                vacant_room[room[1]] = self.api['HOST'] + room[0]
+                vacant_room[room[0]] = room[1]
 
         if not vacant_room:
             log_print('No free room.')
@@ -93,7 +109,7 @@ class LibraryAPI(threading.Thread):
             log_print('Successfully found an empty room!')
             return vacant_room
 
-    def find_seat(self, lib_id: str) -> dict:
+    def find_free_seat(self, lib_id: str) -> dict:
         """
         For some historical reasons, lib_id might be a number or a link. So it's needed to judge its type
         :param lib_id: room id or room link
@@ -130,13 +146,12 @@ class LibraryAPI(threading.Thread):
         select_url = self.api['SELECT_URL'] % (lib_id, key, seat_coordinate)
         result = self.session.get(url=select_url).json()
         log_print(result['msg'])
-        # TODO Waiting to be tested.
         if result['code'] == 0:
             return True
         else:
             return False
 
-    def withdraw(self):
+    def withdraw(self) -> bool:
         """
         Withdraw the selected seat
         :return:
@@ -146,16 +161,27 @@ class LibraryAPI(threading.Thread):
         token = data['msg']
         resp = self.session.post('https://wechat.v2.traceint.com/index.php/cancle/index', data={'t': token})
         log_print(resp.json())
+        return True
 
-    def grab(self, lib_id, seat_coordinate) -> bool:
+    def grab(self, lib_id, seat_coordinate, start_time=None) -> bool:
         """
         Quick select the aim seat
+        :param start_time: Time begin to grab
         :param lib_id: Room to select
         :param seat_coordinate: Seat to select
         :return: Select results
         """
         index_html = self.login()
-        key = get_seat_key(index_html)
+        # First try to access seat_key directly, if failed to match the js_url, block the thread until start_time
+        try:
+            key = get_seat_key(index_html)
+            if start_time:
+                block(start_time)
+        except SystemError as e:
+            log_print(e)
+            block(start_time)
+            index_html = self.login()
+            key = get_seat_key(index_html)
         return self.select(lib_id, seat_coordinate, key)
 
     def monitor(self) -> bool:
@@ -167,12 +193,12 @@ class LibraryAPI(threading.Thread):
         if not self.login():
             return False
 
-        room_list = self.find_room()
+        room_list = self.find_vacant_room()
         while not room_list:
-            room_list = self.find_room()
+            room_list = self.find_vacant_room()
         room = room_list[list(room_list.keys())[0]]
 
-        seat_list = self.find_seat(room)
+        seat_list = self.find_free_seat(room)
         seat = seat_list[list(seat_list.keys())[0]]
 
         resp = self.session.get(room)
@@ -184,17 +210,17 @@ class LibraryAPI(threading.Thread):
         Signin to access five point
         :return: Status of signin
         """
-        self.login()
+        # self.login()
         html = self.session.get('https://wechat.v2.traceint.com/index.php/usertask/index.html').text
         try:
-            log_print(html)
             task_id = re.findall(r'/index.php/usertask/detail/id=(\d+).html', html)[0]
         except IndexError:
+            log_print(html)
             return False
-        log_print("DoSignin Flag")
         result = self.session.post(
             'https://wechat.v2.traceint.com/index.php/usertask/ajaxdone.html',
-            data={'id': task_id}).json()
+            data={'id': task_id}
+        ).json()
         log_print(result)
         return True if result['code'] == 0 else False
 
@@ -217,6 +243,6 @@ class LibraryAPI(threading.Thread):
         """
         :return: None
         """
-        self.grab(self.lib_id, self.seat_coordinate)
+        self.grab(self.lib_id, self.seat_coordinate, self.start_time)
         time.sleep(60)
         self.signin()

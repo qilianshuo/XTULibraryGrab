@@ -2,10 +2,9 @@
 # -*- coding: UTF-8 -*-
 import re
 import time
-import execjs
+# import execjs
+import js2py
 import requests
-
-from db import get_db
 
 
 def insert_str(str_1: str, str_2: str, index: int) -> str:
@@ -22,36 +21,36 @@ def insert_str(str_1: str, str_2: str, index: int) -> str:
 
 
 def get_seat_key(html: str) -> str:
+    """
+    Update: Remove cache mode; use js2py instead of execjs
+    :param html: Html page
+    :return: key
+    """
+    # TODO Match url not only use regular seat but also open room
     js_url = re.findall(r'(https://static.wechat.v2.traceint.com/template/theme2/cache/layout/.*?\.js)', html)
     if not js_url:
         js_url = re.findall(r'(http://static.wechat.v2.traceint.com/template/theme2/cache/layout/.*?\.js)', html)
     if not js_url:
-        log_print("Failed to access the js url")
-        raise SystemError
+        raise SystemError("Failed to access the js url")
     js_url = js_url[0]
 
-    sq = get_db()
-    cache = sq.execute("""SELECT * FROM CACHE WHERE URL=?""", (js_url,)).fetchone()
-    if cache is None:
-        js_code = requests.get(js_url).content.decode('utf-8')
-        try:
-            key_code = re.findall(r'AJAX_URL\+"libid="\+[a-zA-Z]\+"&"\+(.*?)\+"="', js_code)[0]
-        except IndexError:
-            log_print("Failed to access the key!")
-            raise SystemError
+    js_code = requests.get(js_url).content.decode('utf-8')
+    try:
+        key_code = re.findall(r'AJAX_URL\+"libid="\+[a-zA-Z]\+"&"\+(.*?)\+"="', js_code)[0]
+    except IndexError:
+        raise SystemError("Failed to access the key!")
 
-        js_code = re.sub(r'T.ajax_get\(.*\)', '', js_code)  # Remove redundant code
-        final_code = insert_str(js_code, 'return ' + key_code, -2)
+    js_code = re.sub(r'T.ajax_get\(.*\)', '', js_code)  # Remove redundant code
+    final_code = insert_str(js_code, 'return ' + key_code, -2)
 
-        ctx = execjs.compile(final_code)
-        seat_key = ctx.call('reserve_seat')
-        sq.execute("""INSERT INTO CACHE(url, content, key) values (?,?,?)""", (js_url, final_code, seat_key))
-        sq.commit()
-        log_print("Get from web: " + seat_key)
-    else:
-        log_print("Get key from database: " + cache[2])
-        seat_key = cache[2]
-    sq.close()
+    # ctx = execjs.compile(final_code)
+    # seat_key = ctx.call('reserve_seat')
+    context = js2py.EvalJs()
+    context.execute(final_code)
+    seat_key = context.reserve_seat()
+
+    log_print("Use key: " + seat_key)
+
     return seat_key
 
 
@@ -61,7 +60,8 @@ def log_print(log) -> None:
     :param log: Info to printed
     :return: None
     """
-    print(time.strftime("[%m-%d %H:%M:%S] ", time.localtime()), end='')
+    print(time.strftime("[%m-%d %H:%M:%S:", time.localtime()), end='')
+    print('%d] ' % int((time.time() % 1) * 1000), end='')
     print(log)
 
 
@@ -71,6 +71,8 @@ def block(start_time: str) -> None:
     :param start_time: The time to execute program
     :return: None
     """
+    if start_time is None:
+        return
     hour, minute = start_time.split(":")
     while True:
         if time.localtime(time.time())[3] == int(hour) and time.localtime(time.time())[4] >= int(minute):
