@@ -2,7 +2,6 @@
 # -*- coding: UTF-8 -*-
 import re
 import time
-# import execjs
 import js2py
 import requests
 

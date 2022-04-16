@@ -26,12 +26,12 @@ if __name__ == '__main__':
     # TODO Optimal run mode select
     import time
     if time.localtime(time.time())[3] == 7:
-        state = 'grab'
+        mode = 'grab'
     else:
-        state = 'withdraw'
+        mode = 'withdraw'
 
     for thread in thread_pool:
-        if state == 'grab':
+        if mode == 'grab':
             thread.start()
         else:
             thread.login()
