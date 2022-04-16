@@ -41,6 +41,16 @@ class LibraryAPI(threading.Thread):
         self.start_time = start_time
         super().__init__()
 
+    def get_page_html(self, url: str) -> str:
+        """
+        Use session to access this url and return its html
+        :param url: URL to access
+        :return: its page html
+        """
+        resp = self.session.get(url)
+        resp.encoding = resp.apparent_encoding
+        return resp.text
+
     def login(self) -> str:
         """
         Access the login_link to get user session
@@ -69,15 +79,18 @@ class LibraryAPI(threading.Thread):
         else:
             return 0
 
-    def get_room_list(self) -> list:
+    def get_room_list(self, index_html: str = None) -> list:
         """
         Get the room_list
         :return: [(NAME, URL, STATE),]
         """
-        resp = self.session.get(self.api['INDEX_URL'])
-        resp.encoding = resp.apparent_encoding
-
-        list_group = re.findall(r'<div class="list-group".*?>([\s\S]*?)</div>', resp.text)
+        if index_html is None:
+            resp = self.session.get(self.api['INDEX_URL'])
+            resp.encoding = resp.apparent_encoding
+            html = resp.text
+        else:
+            html = index_html
+        list_group = re.findall(r'<div class="list-group".*?>([\s\S]*?)</div>', html)
         if list_group is None:
             log_print('Failed to match room list')
             return []
@@ -159,9 +172,13 @@ class LibraryAPI(threading.Thread):
         data = self.session.post('https://wechat.v2.traceint.com/index.php/reserve/token.html',
                                  data={'type': 'cancle'}).json()
         token = data['msg']
-        resp = self.session.post('https://wechat.v2.traceint.com/index.php/cancle/index', data={'t': token})
-        log_print(resp.json())
-        return True
+        resp = self.session.get('https://wechat.v2.traceint.com/index.php/cancle/index', params={'t': token})
+        resp.encoding = resp.apparent_encoding
+        if '主动退座成功' in resp.text:
+            log_print('退座成功')
+            return True
+        log_print('退座失败！\n[log]\n：' + resp.text)
+        return False
 
     def grab(self, lib_id, seat_coordinate, start_time=None) -> bool:
         """
@@ -172,9 +189,19 @@ class LibraryAPI(threading.Thread):
         :return: Select results
         """
         index_html = self.login()
+        room_list = self.get_room_list(index_html)
+
+        room_html = ''
+        for room in room_list:
+            if 'close' not in room[2]:
+                room_html = self.get_page_html(room[1])
+                break
+
         # First try to access seat_key directly, if failed to match the js_url, block the thread until start_time
         try:
-            key = get_seat_key(index_html)
+            if not room_html:
+                raise SystemError('All lib is closed, script will will block until start_time.')
+            key = get_seat_key(room_html)
             if start_time:
                 block(start_time)
         except SystemError as e:

@@ -14,7 +14,7 @@ if __name__ == '__main__':
     本次测试：
     1. 在main进程取消阻塞
     2. 在LibraryAPI.grab方法中增加抢座时间参数
-    3. 
+    3. ……
     """
     users = config.get('account', 'user').split(',')
 
@@ -25,10 +25,8 @@ if __name__ == '__main__':
         seat_coordinate = config.get(config.get(user, 'room'), config.get(user, 'seat'))
         thread_pool.append(LibraryAPI(link, lib_id, seat_coordinate, start_time=config.get('option', 'start_time')))
 
-    # start_time = config.get('option', 'start_time')
-    # block(start_time)
-
     for thread in thread_pool:
         thread.start()
         # thread.login()
+        # thread.withdraw()
         # print(thread.get_room_list())
