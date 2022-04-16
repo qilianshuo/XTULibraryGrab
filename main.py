@@ -25,10 +25,10 @@ if __name__ == '__main__':
 
     # TODO Optimal run mode select
     import time
-    if time.localtime(time.time())[3] == 7:
-        mode = 'grab'
-    else:
+    if time.localtime(time.time())[3] == 21:
         mode = 'withdraw'
+    else:
+        mode = 'grab'
 
     for thread in thread_pool:
         if mode == 'grab':
