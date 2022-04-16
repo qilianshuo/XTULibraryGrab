@@ -1,10 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 import configparser
 
 from LibraryAPI import LibraryAPI
-
-# from utils import block
 
 config = configparser.RawConfigParser()
 config.read('config.ini')
@@ -25,8 +23,19 @@ if __name__ == '__main__':
         seat_coordinate = config.get(config.get(user, 'room'), config.get(user, 'seat'))
         thread_pool.append(LibraryAPI(link, lib_id, seat_coordinate, start_time=config.get('option', 'start_time')))
 
+    # TODO Optimal run mode select
+    import time
+    if time.localtime(time.time())[3] == 7:
+        state = 'grab'
+    else:
+        state = 'withdraw'
+
     for thread in thread_pool:
-        thread.start()
+        if state == 'grab':
+            thread.start()
+        else:
+            thread.login()
+            thread.withdraw()
         # thread.login()
         # thread.withdraw()
         # print(thread.get_room_list())
