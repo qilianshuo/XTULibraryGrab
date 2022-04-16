@@ -5,7 +5,7 @@ import time
 import threading
 import requests
 
-from utils import log_print, get_seat_key, block
+from utils import log_print, get_seat_key, block, get_lib_id
 
 
 class LibraryAPI(threading.Thread):
@@ -13,6 +13,7 @@ class LibraryAPI(threading.Thread):
         'DATA_URL': 'https://wechat.v2.traceint.com/data/',
         'STATIC_URL': 'https://static.wechat.v2.traceint.com/static/',
         'HOST': 'https://wechat.v2.traceint.com',
+        'ROOM_URL': 'https://wechat.v2.traceint.com/index.php/reserve/layout/libid=%s.html',
         'SELECT_URL': 'https://wechat.v2.traceint.com/index.php/reserve/get/libid=%s&%s=%s&yzm=',
         'INDEX_URL': 'https://wechat.v2.traceint.com/index.php/reserve/index.html',
         'HOLD_SUBMIT_URL': 'https://wechat.v2.traceint.com/index.php/hold/ajaxsubmit.html',
@@ -99,27 +100,29 @@ class LibraryAPI(threading.Thread):
             r'<a href=".*?" data-url="(.*?)".*?><.*?>(.*?)<.*?>(.*?)<.*?>',
             list_group[0].replace('\t', '').replace('\n', ''))
 
-        return [(room[1].strip(), self.api['HOST'] + room[0], room[2]) for room in room_list]
+        return [(room[1].replace(' ', ''), self.api['HOST'] + room[0], room[2]) for room in room_list]
 
-    def find_vacant_room(self) -> dict:
+    def find_vacant_room(self, _filter=None) -> dict:
         """
         Find room which has free seats
         :return: {room_name: room_url,}
         """
+        if _filter is None:
+            _filter = []
         room_list = self.get_room_list()
 
         vacant_room = {}
         for room in room_list:
             if room[2] == 'close':
                 continue
-            if int(room[2].split('/')[0]):
+            if int(room[2].split('/')[0]) and room[0] not in _filter:
                 vacant_room[room[0]] = room[1]
 
         if not vacant_room:
             log_print('No free room.')
             return vacant_room
         else:
-            log_print('Successfully found an empty room!')
+            log_print('Successfully found an empty room.')
             return vacant_room
 
     def find_free_seat(self, lib_id: str) -> dict:
@@ -130,23 +133,25 @@ class LibraryAPI(threading.Thread):
         """
         lib_id = str(lib_id)
         if 'http' not in lib_id:
-            lib_id = self.api['HOST'] + lib_id
-        resp = self.session.get(url=lib_id)
-        resp.encoding = resp.apparent_encoding
+            room_url = self.api['ROOM_URL'] % lib_id
+        else:
+            room_url = lib_id
+
+        html = self.get_page_html(room_url)
 
         pattern = re.compile(r'<div class="grid_cell {2}grid_1" data-key="(.*?)".*?><em>(\d+)</em></div>')
-        seat_list = pattern.findall(resp.text.replace('\n', ''))
-        vacant_seat = {}
+        seat_list = pattern.findall(html.replace('\n', ''))
+
+        seat_dict = {}
         if seat_list:
-            # TODO Remove test code
-            get_seat_key(resp.text)
-            for seat in seat_list:
-                vacant_seat[seat[1]] = seat[0]
             log_print('Successful found a seat.')
-            return vacant_seat
+            seat_dict['key'] = get_seat_key(html)
+            for seat in seat_list:
+                seat_dict[seat[1]] = seat[0]
+            return seat_dict
         else:
-            log_print('Nothing...')
-            return vacant_seat
+            log_print('No seat founded.')
+            return seat_dict
 
     def select(self, lib_id=None, seat_coordinate=None, key=None) -> bool:
         """
@@ -211,26 +216,33 @@ class LibraryAPI(threading.Thread):
             key = get_seat_key(index_html)
         return self.select(lib_id, seat_coordinate, key)
 
-    def monitor(self) -> bool:
+    def monitor(self, _filter=None) -> bool:
         """
         Monitor the free seat and select it
         :return: Select results
         """
         # TODO Logic optimization
+        if _filter is None:
+            _filter = []
+
         if not self.login():
             return False
 
-        room_list = self.find_vacant_room()
-        while not room_list:
-            room_list = self.find_vacant_room()
-        room = room_list[list(room_list.keys())[0]]
+        while True:
+            room_dict = self.find_vacant_room(_filter)
+            if room_dict:
+                # Select the first room as the default
+                room = room_dict[list(room_dict.keys())[0]]
+                lib_id = get_lib_id(room)
+                # Select the first seat as the default
+                seat_dict = self.find_free_seat(lib_id)
+                if seat_dict:
+                    seat = seat_dict[list(seat_dict.keys())[1]]
+                    key = seat_dict['key']
+                    self.select(lib_id, seat, key)
+                    break
 
-        seat_list = self.find_free_seat(room)
-        seat = seat_list[list(seat_list.keys())[0]]
-
-        resp = self.session.get(room)
-        key = get_seat_key(resp.text)
-        self.select(room, seat, key)
+            time.sleep(1)
 
     def signin(self) -> bool:
         """

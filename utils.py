@@ -46,11 +46,13 @@ def get_seat_key(html: str) -> str:
     # seat_key = ctx.call('reserve_seat')
     context = js2py.EvalJs()
     context.execute(final_code)
-    seat_key = context.reserve_seat()
-
-    log_print("Use key: " + seat_key)
-
-    return seat_key
+    try:
+        seat_key = context.reserve_seat()
+        log_print("Use key: " + seat_key)
+        return seat_key
+    except (LookupError, OSError):
+        log_print('[log]\n' + js_code)
+        raise SystemError('Failed to execute the js!')
 
 
 def log_print(log) -> None:
@@ -76,3 +78,17 @@ def block(start_time: str) -> None:
     while True:
         if time.localtime(time.time())[3] == int(hour) and time.localtime(time.time())[4] >= int(minute):
             break
+
+
+def get_lib_id(url: str) -> str:
+    """
+    Find lib_id in url
+    :param url: Room URL
+    :return: lib_id
+    """
+    pattern = re.compile(r'libid=(\d+)\.html')
+    try:
+        return pattern.findall(url)[0]
+    except IndexError:
+        log_print('URL is incorrect: ' + url)
+        raise SystemError
