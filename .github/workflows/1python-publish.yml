@@ -10,7 +10,7 @@ name: Grab
 
 on:
   schedule:
-    - cron: '39 15 * * *'
+    - cron: '42 15 * * *'
 #  release:
 #    types: [published]
 #  push:
