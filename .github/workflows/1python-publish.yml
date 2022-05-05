@@ -40,5 +40,4 @@ jobs:
       - name: Test
         run: |
           python test.py
-        env:
 
