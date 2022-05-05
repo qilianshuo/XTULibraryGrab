@@ -12,9 +12,9 @@ on:
   release:
     types: [published]
   push:
-    branches: [ main ]
+    branches: [ main,master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main,master ]
   schedule:
     - cron: 7 3 * * *
 
