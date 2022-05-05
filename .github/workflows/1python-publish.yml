@@ -9,12 +9,12 @@
 name: Grab
 
 on:
-  release:
-    types: [published]
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+#  release:
+#    types: [published]
+#  push:
+#    branches: [main, master]
+#  pull_request:
+#    branches: [main, master]
   schedule:
     - cron: 25 3 * * *
 
