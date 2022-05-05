@@ -16,7 +16,7 @@ on:
 #  pull_request:
 #    branches: [main, master]
   schedule:
-    - cron: * 3 * * *
+    - cron: 33,34,35,36,37,38,39,40 3 * * *
 
 
 permissions:
