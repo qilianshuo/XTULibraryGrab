@@ -16,7 +16,7 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    - cron: 5 3 * * *
+    - cron: 7 3 * * *
 
 
 permissions:
