@@ -27,7 +27,8 @@ jobs:
       with:
         python-version: '3.8'
     - name: Instalpython -m pip install l dependencies
-      run:python -m pip install -r requirements.txt
+      run: |
+        python -m pip install -r requirements.txt
         python -m pip install --upgrade pip
         pip install build
     - name: Build package
